@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Viktorina</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#1b1535;--panel:#2a2250;--btn:#3a3070;--text:#f6f1ff;--ok:#2fa866;--bad:#d1495b;--accent:#ffb84d;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,sans-serif;min-height:100vh;padding:16px 14px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center}
+.wrap{width:100%;max-width:440px}
+header{display:flex;justify-content:space-between;font-weight:700;margin-bottom:14px}
+.bar{height:8px;background:var(--panel);border-radius:8px;overflow:hidden;margin-bottom:18px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+h2{font-size:21px;line-height:1.3;margin:0 0 18px}
+.opt{display:block;width:100%;text-align:left;margin-bottom:10px;padding:14px;border:0;border-radius:12px;background:var(--btn);color:var(--text);font-size:17px}
+.opt.ok{background:var(--ok)}.opt.bad{background:var(--bad)}
+.next,.again{width:100%;padding:14px;border:0;border-radius:12px;background:var(--accent);color:#2a1d00;font-weight:800;font-size:17px;margin-top:8px}
+.end{text-align:center;padding-top:40px}
+.end b{font-size:46px;color:var(--accent)}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><span>Viktorina</span><span>Ball: <b id="score">0</b></span></header>
+  <div id="game">
+    <div class="bar"><i id="bar"></i></div>
+    <h2 id="q"></h2>
+    <div id="opts"></div>
+    <button class="next hidden" id="next">Keyingi</button>
+  </div>
+  <div id="end" class="end hidden">
+    <p>Natija</p><b id="final"></b>
+    <p id="fmsg"></p>
+    <button class="again" id="again">Qayta o'ynash</button>
+  </div>
+</div>
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+
+const BANK = [
+  {q:"O'zbekistonning poytaxti qaysi shahar?",a:["Samarqand","Toshkent","Buxoro","Namangan"],c:1},
+  {q:"Amir Temur qaysi shaharda tug'ilgan?",a:["Shahrisabz (Kesh)","Xiva","Qo'qon","Andijon"],c:0},
+  {q:"Haftada necha kun bor?",a:["5","6","7","8"],c:2},
+  {q:"Quyosh tizimidagi eng katta sayyora qaysi?",a:["Yer","Mars","Saturn","Yupiter"],c:3},
+  {q:"Suv necha darajada qaynaydi (dengiz sathida)?",a:["90","100","110","120"],c:1},
+  {q:"\"Boburnoma\" asarining muallifi kim?",a:["Alisher Navoiy","Zahiriddin Bobur","Mirzo Ulug'bek","Abdulla Qodiriy"],c:1},
+  {q:"Registon maydoni qaysi shaharda joylashgan?",a:["Toshkent","Buxoro","Samarqand","Xiva"],c:2},
+  {q:"Bir yilda necha oy bor?",a:["10","11","12","13"],c:2},
+  {q:"Eng katta okean qaysi?",a:["Atlantika","Tinch okeani","Hind okeani","Shimoliy Muz"],c:1},
+  {q:"\"O'tkan kunlar\" romanining muallifi kim?",a:["Cho'lpon","Abdulla Qodiriy","G'afur G'ulom","Oybek"],c:1},
+  {q:"Inson tanasida nechta asosiy sezgi a'zosi bor?",a:["3","4","5","6"],c:2},
+  {q:"7 ni 8 ga ko'paytirsak necha bo'ladi?",a:["54","56","58","64"],c:1},
+  {q:"Aral dengizi qaysi ikki davlat orasida?",a:["O'zbekiston va Qozog'iston","O'zbekiston va Eron","Tojikiston va Turkmaniston","Qirg'iziston va Xitoy"],c:0},
+  {q:"Qaysi hayvon \"cho'l kemasi\" deb ataladi?",a:["Ot","Tuya","Eshak","Fil"],c:1},
+  {q:"Kompyuterning \"miyasi\" nima deyiladi?",a:["Monitor","Protsessor","Sichqoncha","Klaviatura"],c:1}
+];
+
+const N = 10;
+let qs, i, score, locked;
+const $ = id => document.getElementById(id);
+
+function store(k, v){ try{ if(v===undefined) return localStorage.getItem(k); localStorage.setItem(k,v);}catch(e){} }
+let total = parseInt(store("vscore")||"0",10);
+$("score").textContent = total;
+
+function shuffle(a){ a=a.slice(); for(let j=a.length-1;j>0;j--){const k=Math.floor(Math.random()*(j+1));[a[j],a[k]]=[a[k],a[j]];} return a; }
+
+function start(){
+  qs = shuffle(BANK).slice(0, N); i = 0; score = 0;
+  $("end").classList.add("hidden"); $("game").classList.remove("hidden");
+  show();
+}
+function show(){
+  locked = false;
+  const it = qs[i];
+  $("bar").style.width = (i/qs.length*100)+"%";
+  $("q").textContent = (i+1)+"/"+qs.length+". "+it.q;
+  $("next").classList.add("hidden");
+  const o = $("opts"); o.innerHTML = "";
+  it.a.forEach((t, idx)=>{
+    const b = document.createElement("button"); b.className="opt"; b.textContent=t;
+    b.onclick = ()=>pick(idx,b); o.appendChild(b);
+  });
+}
+function pick(idx,btn){
+  if(locked) return; locked = true;
+  const it = qs[i], all = $("opts").children;
+  if(idx===it.c){ btn.classList.add("ok"); score++; total+=10; store("vscore",String(total)); $("score").textContent=total; }
+  else { btn.classList.add("bad"); all[it.c].classList.add("ok"); }
+  $("next").textContent = i===qs.length-1 ? "Natijani ko'rish" : "Keyingi";
+  $("next").classList.remove("hidden");
+}
+$("next").onclick = ()=>{ i++; if(i>=qs.length) finish(); else show(); };
+function finish(){
+  $("game").classList.add("hidden"); $("end").classList.remove("hidden");
+  $("final").textContent = score+" / "+qs.length;
+  $("fmsg").textContent = score>=8 ? "Ajoyib! Siz bilimdonsiz 🎉" : score>=5 ? "Yaxshi natija!" : "Yana urinib ko'ring!";
+}
+$("again").onclick = start;
+start();
+</script>
+</body>
+</html>
